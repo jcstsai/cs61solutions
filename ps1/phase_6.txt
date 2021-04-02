@@ -1,0 +1,125 @@
+08048d98 phase_6:
+# read six numbers
+# %edi = the counter
+# %esi = address pointer to the numbers
+# %edx = secondary pointer
+# %eax = local var
+# %ebx = local var
+# %ecx = local var
+
+ 8048d98: 55                           	pushl	%ebp
+ 8048d99: 89 e5                        	movl	%esp, %ebp
+ 8048d9b: 83 ec 4c                     	subl	$76, %esp
+ 8048d9e: 57                           	pushl	%edi
+ 8048d9f: 56                           	pushl	%esi
+ 8048da0: 53                           	pushl	%ebx
+ 8048da1: 8b 55 08                     	movl	8(%ebp), %edx
+ 8048da4: c7 45 cc 6c b2 04 08         	movl	$134525548, -52(%ebp)
+ 8048dab: 83 c4 f8                     	addl	$-8, %esp
+ 8048dae: 8d 45 e8                     	leal	-24(%ebp), %eax
+ 8048db1: 50                           	pushl	%eax
+ 8048db2: 52                           	pushl	%edx
+ 8048db3: e8 20 02 00 00               	calll	544 <read_six_numbers>
+# end read six numbers
+
+# edi:counter = 0
+# esi = 0x-54
+# var = nums[counter] - 1
+# if var < 5 (unsigned) explode.
+# ebx = counter + 1
+# if ebx < 5: jump to 0x8048dfc
+
+ 8048db8: 31 ff                        	xorl	%edi, %edi
+ 8048dba: 83 c4 10                     	addl	$16, %esp
+ 8048dbd: 8d 76 00                     	leal	(%esi), %esi
+
+ 8048dc0: 8d 45 e8                     	leal	-24(%ebp), %eax
+ 8048dc3: 8b 04 b8                     	movl	(%eax,%edi,4), %eax
+ 8048dc6: 48                           	decl	%eax
+ 8048dc7: 83 f8 05                     	cmpl	$5, %eax
+ 8048dca: 76 05                        	jbe	5 <phase_6+0x39> - 0x0848dd1
+ 8048dcc: e8 2b 07 00 00               	calll	1835 <explode_bomb>
+ 8048dd1: 8d 5f 01                     	leal	1(%edi), %ebx
+ 8048dd4: 83 fb 05                     	cmpl	$5, %ebx
+ 8048dd7: 7f 23                        	jg	35 <phase_6+0x64> - 0x8048dfc
+
+
+# eax = edi:counter
+# eax = &nums[0]
+
+ 8048dd9: 8d 04 bd 00 00 00 00         	leal	(,%edi,4), %eax
+ 8048de0: 89 45 c8                     	movl	%eax, -56(%ebp)
+ 8048de3: 8d 75 e8                     	leal	-24(%ebp), %esi
+ 8048de6: 8b 55 c8                     	movl	-56(%ebp), %edx
+
+ 8048de9: 8b 04 32                     	movl	(%edx,%esi), %eax
+ 8048dec: 3b 04 9e                     	cmpl	(%esi,%ebx,4), %eax
+ 8048def: 75 05                        	jne	5 <phase_6+0x5e> - 0x8048df6
+ 8048df1: e8 06 07 00 00               	calll	1798 <explode_bomb>
+
+ 8048df6: 43                           	incl	%ebx
+ 8048df7: 83 fb 05                     	cmpl	$5, %ebx
+ 8048dfa: 7e ea                        	jle	-22 <phase_6+0x4e> 0x8048de6
+
+
+ 8048dfc: 47                           	incl	%edi
+ 8048dfd: 83 ff 05                     	cmpl	$5, %edi
+ 8048e00: 7e be                        	jle	-66 <phase_6+0x28> 0x8048dc0
+ 8048e02: 31 ff                        	xorl	%edi, %edi
+ 8048e04: 8d 4d e8                     	leal	-24(%ebp), %ecx
+ 8048e07: 8d 45 d0                     	leal	-48(%ebp), %eax
+ 8048e0a: 89 45 c4                     	movl	%eax, -60(%ebp)
+ 8048e0d: 8d 76 00                     	leal	(%esi), %esi
+
+ 8048e10: 8b 75 cc                     	movl	-52(%ebp), %esi
+ 8048e13: bb 01 00 00 00               	movl	$1, %ebx
+ 8048e18: 8d 04 bd 00 00 00 00         	leal	(,%edi,4), %eax
+ 8048e1f: 89 c2                        	movl	%eax, %edx
+ 8048e21: 3b 1c 08                     	cmpl	(%eax,%ecx), %ebx
+ 8048e24: 7d 12                        	jge	18 <phase_6+0xa0> 0x8048e38
+ 8048e26: 8b 04 0a                     	movl	(%edx,%ecx), %eax
+ 8048e29: 8d b4 26 00 00 00 00         	leal	(%esi,%eiz), %esi
+ 8048e30: 8b 76 08                     	movl	8(%esi), %esi
+ 8048e33: 43                           	incl	%ebx
+ 8048e34: 39 c3                        	cmpl	%eax, %ebx
+ 8048e36: 7c f8                        	jl	-8 <phase_6+0x98> 0x8048e30
+
+ 8048e38: 8b 55 c4                     	movl	-60(%ebp), %edx
+ 8048e3b: 89 34 ba                     	movl	%esi, (%edx,%edi,4)
+ 8048e3e: 47                           	incl	%edi
+ 8048e3f: 83 ff 05                     	cmpl	$5, %edi
+ 8048e42: 7e cc                        	jle	-52 <phase_6+0x78> 0x8048e10
+ 8048e44: 8b 75 d0                     	movl	-48(%ebp), %esi
+ 8048e47: 89 75 cc                     	movl	%esi, -52(%ebp)
+ 8048e4a: bf 01 00 00 00               	movl	$1, %edi
+ 8048e4f: 8d 55 d0                     	leal	-48(%ebp), %edx
+
+ 8048e52: 8b 04 ba                     	movl	(%edx,%edi,4), %eax
+ 8048e55: 89 46 08                     	movl	%eax, 8(%esi)
+ 8048e58: 89 c6                        	movl	%eax, %esi
+ 8048e5a: 47                           	incl	%edi
+ 8048e5b: 83 ff 05                     	cmpl	$5, %edi
+ 8048e5e: 7e f2                        	jle	-14 <phase_6+0xba> 0x8048e52
+ 8048e60: c7 46 08 00 00 00 00         	movl	$0, 8(%esi)
+ 8048e67: 8b 75 cc                     	movl	-52(%ebp), %esi
+ 8048e6a: 31 ff                        	xorl	%edi, %edi
+ 8048e6c: 8d 74 26 00                  	leal	(%esi,%eiz), %esi
+
+ 8048e70: 8b 56 08                     	movl	8(%esi), %edx
+ 8048e73: 8b 06                        	movl	(%esi), %eax
+ 8048e75: 3b 02                        	cmpl	(%edx), %eax
+ 8048e77: 7d 05                        	jge	5 <phase_6+0xe6> 0x8048e7e
+ 8048e79: e8 7e 06 00 00               	calll	1662 <explode_bomb>
+
+ 8048e7e: 8b 76 08                     	movl	8(%esi), %esi
+ 8048e81: 47                           	incl	%edi
+ 8048e82: 83 ff 04                     	cmpl	$4, %edi
+ 8048e85: 7e e9                        	jle	-23 <phase_6+0xd8> 0x8048e70
+ 8048e87: 8d 65 a8                     	leal	-88(%ebp), %esp
+ 8048e8a: 5b                           	popl	%ebx
+ 8048e8b: 5e                           	popl	%esi
+ 8048e8c: 5f                           	popl	%edi
+ 8048e8d: 89 ec                        	movl	%ebp, %esp
+ 8048e8f: 5d                           	popl	%ebp
+ 8048e90: c3                           	retl
+ 8048e91: 8d 76 00                     	leal	(%esi), %esi
