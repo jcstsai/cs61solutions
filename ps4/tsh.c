@@ -326,7 +326,7 @@ void sigint_handler(int sig)
         if (jobs[i].state == FG) {
             int jid = jobs[i].jid;
             int pid = jobs[i].pid;
-            kill(jobs[i].pid, SIGINT);
+            kill(jobs[i].pid, sig);
             deletejob(jobs, jobs[i].pid);
             printf("Job [%d] (%d) terminated by signal %d\n", jid, pid, sig);
         }
@@ -341,6 +341,16 @@ void sigint_handler(int sig)
  */
 void sigtstp_handler(int sig) 
 {
+    printf("STOP\n");
+    for (int i = 0; i < maxjid(jobs); i++) {
+        if (jobs[i].state == FG) {
+            int jid = jobs[i].jid;
+            int pid = jobs[i].pid;
+            kill(jobs[i].pid, sig);
+            deletejob(jobs, jobs[i].pid);
+            printf("Job [%d] (%d) stopped by signal %d\n", jid, pid, sig);
+        }
+    }
     return;
 }
 
