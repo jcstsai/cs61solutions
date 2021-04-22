@@ -173,6 +173,8 @@ void eval(char *cmdline)
     int bg;
     // Process id
     pid_t pid;
+    // Job id
+    int jid;
     
     strcpy(buf, cmdline);
     bg = parseline(buf, argv);
@@ -187,6 +189,8 @@ void eval(char *cmdline)
                 printf("%s: Command not found.\n", argv[0]);
                 exit(0);
             }
+        } else {
+            jid = addjob(jobs, pid, bg ? BG : FG, cmdline);
         }
         
         // Parent waits for foreground job to terminate
@@ -194,9 +198,11 @@ void eval(char *cmdline)
             int status;
             if (waitpid(pid, &status, 0) < 0)
                 unix_error("waitfg: waitpid error");
+            deletejob(jobs, pid);
+        } else {
+            // TODO delete these jobs on sigchld
+            printf("[%d] (%d) %s", jid, pid, cmdline);
         }
-        else
-            printf("%d %s", pid, cmdline);
     }
         
     return;
@@ -269,6 +275,10 @@ int builtin_cmd(char **argv)
         exit(0);
     if (!strcmp(argv[0], "&"))
         return 1;
+    if (!strcmp(argv[0], "jobs")) {
+        listjobs(jobs);
+        return 1;
+    }
     
     return 0;     /* not a builtin command */
 }
@@ -312,6 +322,15 @@ void sigchld_handler(int sig)
  */
 void sigint_handler(int sig) 
 {
+    for (int i = 0; i < maxjid(jobs); i++) {
+        if (jobs[i].state == FG) {
+            int jid = jobs[i].jid;
+            int pid = jobs[i].pid;
+            kill(jobs[i].pid, SIGINT);
+            deletejob(jobs, jobs[i].pid);
+            printf("Job [%d] (%d) terminated by signal %d\n", jid, pid, sig);
+        }
+    }
     return;
 }
 
