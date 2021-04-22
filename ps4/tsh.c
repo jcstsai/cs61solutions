@@ -165,6 +165,15 @@ int main(int argc, char **argv)
 */
 void eval(char *cmdline) 
 {
+    // check builtin commands
+    char *argv[MAXARGS];
+    parseline(cmdline, argv);
+    builtin_cmd(argv);
+    
+    // execute command with arguments
+    char *envp[0];
+    execve(argv[0], argv, envp);
+        
     return;
 }
 
@@ -231,6 +240,10 @@ int parseline(const char *cmdline, char **argv)
  */
 int builtin_cmd(char **argv) 
 {
+    if (strcmp(argv[0], "quit") == 0) {
+        exit(0);
+    }
+    
     return 0;     /* not a builtin command */
 }
 
