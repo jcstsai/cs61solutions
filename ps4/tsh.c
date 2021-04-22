@@ -165,14 +165,39 @@ int main(int argc, char **argv)
 */
 void eval(char *cmdline) 
 {
-    // check builtin commands
+    // Argument list execve()
     char *argv[MAXARGS];
-    parseline(cmdline, argv);
-    builtin_cmd(argv);
+    // Holds modified command line
+    char buf[MAXLINE];
+    // Should the job run in bg or fb?
+    int bg;
+    // Process id
+    pid_t pid;
     
-    // execute command with arguments
-    char *envp[0];
-    execve(argv[0], argv, envp);
+    strcpy(buf, cmdline);
+    bg = parseline(buf, argv);
+    if (argv[0] == NULL)
+        // ignore empty lines
+        return;
+    
+    if (!builtin_cmd(argv)) {
+        if ((pid = fork()) == 0) {
+            // Child runs user job
+            if (execve(argv[0], argv, environ) < 0) {
+                printf("%s: Command not found.\n", argv[0]);
+                exit(0);
+            }
+        }
+        
+        // Parent waits for foreground job to terminate
+        if (!bg) {
+            int status;
+            if (waitpid(pid, &status, 0) < 0)
+                unix_error("waitfg: waitpid error");
+        }
+        else
+            printf("%d %s", pid, cmdline);
+    }
         
     return;
 }
@@ -240,9 +265,10 @@ int parseline(const char *cmdline, char **argv)
  */
 int builtin_cmd(char **argv) 
 {
-    if (strcmp(argv[0], "quit") == 0) {
+    if (!strcmp(argv[0], "quit"))
         exit(0);
-    }
+    if (!strcmp(argv[0], "&"))
+        return 1;
     
     return 0;     /* not a builtin command */
 }
