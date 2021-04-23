@@ -199,7 +199,6 @@ void eval(char *cmdline)
             int status;
             if (waitpid(pid, &status, WUNTRACED) < 0)
                 unix_error("waitfg: waitpid error");
-            printf("%d %d\n", pid, status);
             if (WIFSTOPPED(status))
                 printf("Job [%d] (%d) stopped by signal %d\n", jid, pid, SIGTSTP);
             else
@@ -284,6 +283,10 @@ int builtin_cmd(char **argv)
         listjobs(jobs);
         return 1;
     }
+    if (!strcmp(argv[0], "bg") || !strcmp(argv[0], "fg")) {
+        do_bgfg(argv);
+        return 1;
+    }
     
     return 0;     /* not a builtin command */
 }
@@ -293,7 +296,24 @@ int builtin_cmd(char **argv)
  */
 void do_bgfg(char **argv) 
 {
-    return;
+    if (!strcmp(argv[0], "bg")) {
+        pid_t pid;
+        struct job_t *job;
+        if (argv[1][0] == '%') {
+            int jid;
+            sscanf(argv[1], "%%%d", &jid);
+            job = getjobjid(jobs, jid);
+            pid = job->pid;
+        } else {
+            pid = atoi(argv[1]);
+            job = getjobpid(jobs, pid);
+        }
+        kill(-1*pid, SIGCONT);
+        job->state = BG;
+        printf("[%d] (%d) %s", job->jid, pid, job->cmdline);
+    } else {
+        return;
+    }
 }
 
 /* 
