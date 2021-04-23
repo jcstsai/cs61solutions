@@ -184,6 +184,7 @@ void eval(char *cmdline)
     
     if (!builtin_cmd(argv)) {
         if ((pid = fork()) == 0) {
+            setpgid(0,0);
             // Child runs user job
             if (execve(argv[0], argv, environ) < 0) {
                 printf("%s: Command not found.\n", argv[0]);
@@ -196,9 +197,12 @@ void eval(char *cmdline)
         // Parent waits for foreground job to terminate
         if (!bg) {
             int status;
-            if (waitpid(pid, &status, 0) < 0)
+            if (waitpid(pid, &status, WUNTRACED) < 0)
                 unix_error("waitfg: waitpid error");
-            deletejob(jobs, pid);
+            if (status == ST)
+                printf("Job [%d] (%d) stopped by signal %d\n", jid, pid, SIGTSTP);
+            else
+                deletejob(jobs, pid);
         } else {
             // TODO delete these jobs on sigchld
             printf("[%d] (%d) %s", jid, pid, cmdline);
@@ -326,7 +330,7 @@ void sigint_handler(int sig)
         if (jobs[i].state == FG) {
             int jid = jobs[i].jid;
             int pid = jobs[i].pid;
-            kill(jobs[i].pid, sig);
+            kill(-1*jobs[i].pid, sig);
             deletejob(jobs, jobs[i].pid);
             printf("Job [%d] (%d) terminated by signal %d\n", jid, pid, sig);
         }
@@ -341,14 +345,10 @@ void sigint_handler(int sig)
  */
 void sigtstp_handler(int sig) 
 {
-    printf("STOP\n");
     for (int i = 0; i < maxjid(jobs); i++) {
         if (jobs[i].state == FG) {
-            int jid = jobs[i].jid;
-            int pid = jobs[i].pid;
-            kill(jobs[i].pid, sig);
-            deletejob(jobs, jobs[i].pid);
-            printf("Job [%d] (%d) stopped by signal %d\n", jid, pid, sig);
+            kill(-1*jobs[i].pid, sig);
+            jobs[i].state = ST;
         }
     }
     return;
