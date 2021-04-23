@@ -199,7 +199,8 @@ void eval(char *cmdline)
             int status;
             if (waitpid(pid, &status, WUNTRACED) < 0)
                 unix_error("waitfg: waitpid error");
-            if (status == ST)
+            printf("%d %d\n", pid, status);
+            if (WIFSTOPPED(status))
                 printf("Job [%d] (%d) stopped by signal %d\n", jid, pid, SIGTSTP);
             else
                 deletejob(jobs, pid);
