@@ -196,13 +196,7 @@ void eval(char *cmdline)
         
         // Parent waits for foreground job to terminate
         if (!bg) {
-            int status;
-            if (waitpid(pid, &status, WUNTRACED) < 0)
-                unix_error("waitfg: waitpid error");
-            if (WIFSTOPPED(status))
-                printf("Job [%d] (%d) stopped by signal %d\n", jid, pid, SIGTSTP);
-            else
-                deletejob(jobs, pid);
+            waitfg(pid);
         } else {
             // TODO delete these jobs on sigchld
             printf("[%d] (%d) %s", jid, pid, cmdline);
@@ -296,23 +290,26 @@ int builtin_cmd(char **argv)
  */
 void do_bgfg(char **argv) 
 {
+    pid_t pid;
+    struct job_t *job;
+    if (argv[1][0] == '%') {
+        int jid;
+        sscanf(argv[1], "%%%d", &jid);
+        job = getjobjid(jobs, jid);
+        pid = job->pid;
+    } else {
+        pid = atoi(argv[1]);
+        job = getjobpid(jobs, pid);
+    }
+    
+    kill(-1*pid, SIGCONT);
+
     if (!strcmp(argv[0], "bg")) {
-        pid_t pid;
-        struct job_t *job;
-        if (argv[1][0] == '%') {
-            int jid;
-            sscanf(argv[1], "%%%d", &jid);
-            job = getjobjid(jobs, jid);
-            pid = job->pid;
-        } else {
-            pid = atoi(argv[1]);
-            job = getjobpid(jobs, pid);
-        }
-        kill(-1*pid, SIGCONT);
         job->state = BG;
         printf("[%d] (%d) %s", job->jid, pid, job->cmdline);
     } else {
-        return;
+        job->state = FG;
+        waitfg(pid);
     }
 }
 
@@ -321,7 +318,14 @@ void do_bgfg(char **argv)
  */
 void waitfg(pid_t pid)
 {
-    return;
+    int status;
+    if (waitpid(pid, &status, WUNTRACED) < 0)
+        unix_error("waitfg: waitpid error");
+    if (WIFSTOPPED(status)) {
+        struct job_t *job = getjobpid(jobs, pid);
+        printf("Job [%d] (%d) stopped by signal %d\n", job->jid, pid, SIGTSTP);
+    } else
+        deletejob(jobs, pid);
 }
 
 /*****************
