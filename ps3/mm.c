@@ -156,18 +156,35 @@ void mm_free(void *ptr)
  */
 void *mm_realloc(void *ptr, size_t size)
 {
-    void *oldptr = ptr;
+    size_t oldsize;
     void *newptr;
-    size_t copySize;
-    
+
+    /* If size == 0 then this is just free, and we return NULL. */
+    if(size == 0) {
+    mm_free(ptr);
+    return 0;
+    }
+
+    /* If oldptr is NULL, then this is just malloc. */
+    if(ptr == NULL) {
+    return mm_malloc(size);
+    }
+
     newptr = mm_malloc(size);
-    if (newptr == NULL)
-      return NULL;
-    copySize = *(size_t *)((char *)oldptr - SIZE_T_SIZE);
-    if (size < copySize)
-      copySize = size;
-    memcpy(newptr, oldptr, copySize);
-    mm_free(oldptr);
+
+    /* If realloc() fails the original block is left untouched  */
+    if(!newptr) {
+    return 0;
+    }
+
+    /* Copy the old data. */
+    oldsize = GET_SIZE(HDRP(ptr));
+    if(size < oldsize) oldsize = size;
+    memcpy(newptr, ptr, oldsize);
+
+    /* Free the old block. */
+    mm_free(ptr);
+
     return newptr;
 }
 
