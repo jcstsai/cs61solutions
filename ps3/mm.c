@@ -75,6 +75,9 @@ team_t team = {
 
 /* Global variables */
 static char *heap_listp = 0;  /* Pointer to first block */
+#ifdef NEXT_FIT
+static char *rover;           /* Next fit rover */
+#endif
 
 /* Function prototypes for internal helper routines */
 static void *extend_heap(size_t words);
