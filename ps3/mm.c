@@ -140,14 +140,16 @@ void *mm_malloc(size_t size)
  */
 void mm_free(void *ptr)
 {
+    // don't free a null pointer
     if(ptr == 0) return;
-
-    size_t size = GET_SIZE(HDRP(ptr));
     
-    if (heap_listp == 0){
+    // if still at the start, initialize the heap
+    if (heap_listp == 0) {
         mm_init();
     }
 
+    // mark the block as freed and coalesce
+    size_t size = GET_SIZE(HDRP(ptr));
     PUT(HDRP(ptr), PACK(size, 0));
     PUT(FTRP(ptr), PACK(size, 0));
     coalesce(ptr);
@@ -155,6 +157,7 @@ void mm_free(void *ptr)
 
 /*
  * mm_realloc - Implemented simply in terms of mm_malloc and mm_free
+ * TODO clean up
  */
 void *mm_realloc(void *ptr, size_t size)
 {
@@ -191,6 +194,40 @@ void *mm_realloc(void *ptr, size_t size)
 }
 
 /*
+ * find_fit - Find a fit for a block with asize bytes
+ */
+static void *find_fit(size_t asize) {
+#ifdef NEXT_FIT
+    // Next fit search
+    char *oldrover = rover;
+
+    // Search from the rover to the end of list
+    for (; GET_SIZE(HDRP(rover)) > 0; rover = NEXT_BLKP(rover))
+        if (!GET_ALLOC(HDRP(rover)) && (asize <= GET_SIZE(HDRP(rover))))
+            return rover;
+
+    /* search from start of list to old rover */
+    for (rover = heap_listp; rover < oldrover; rover = NEXT_BLKP(rover))
+    if (!GET_ALLOC(HDRP(rover)) && (asize <= GET_SIZE(HDRP(rover))))
+        return rover;
+
+    // no fit
+    return NULL;
+#else
+    void *bp;
+
+    for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) {
+        if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))) {
+            return bp;
+        }
+    }
+    
+    // no fit
+    return NULL;
+#endif
+}
+
+/*
  * extend_heap - Extend heap with free block and return its block pointer
  */
 /* $begin mmextendheap */
@@ -213,112 +250,62 @@ static void *extend_heap(size_t words)
 }
 
 /*
- * find_fit - Find a fit for a block with asize bytes
- */
-/* $begin mmfirstfit */
-/* $begin mmfirstfit-proto */
-static void *find_fit(size_t asize)
-/* $end mmfirstfit-proto */
-{
-/* $end mmfirstfit */
-
-#ifdef NEXT_FIT
-    /* Next fit search */
-    char *oldrover = rover;
-
-    /* Search from the rover to the end of list */
-    for ( ; GET_SIZE(HDRP(rover)) > 0; rover = NEXT_BLKP(rover))
-    if (!GET_ALLOC(HDRP(rover)) && (asize <= GET_SIZE(HDRP(rover))))
-        return rover;
-
-    /* search from start of list to old rover */
-    for (rover = heap_listp; rover < oldrover; rover = NEXT_BLKP(rover))
-    if (!GET_ALLOC(HDRP(rover)) && (asize <= GET_SIZE(HDRP(rover))))
-        return rover;
-
-    return NULL;  /* no fit found */
-#else
-/* $begin mmfirstfit */
-    /* First fit search */
-    void *bp;
-
-    for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) {
-    if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))) {
-        return bp;
-    }
-    }
-    return NULL; /* No fit */
-/* $end mmfirstfit */
-#endif
-}
-
-/* $end mmfree */
-/*
  * coalesce - Boundary tag coalescing. Return ptr to coalesced block
  */
-/* $begin mmfree */
-static void *coalesce(void *bp)
-{
+static void *coalesce(void *bp) {
     size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp)));
     size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
     size_t size = GET_SIZE(HDRP(bp));
 
-    if (prev_alloc && next_alloc) {            /* Case 1 */
-    return bp;
+    if (prev_alloc && next_alloc) {
+        // case 1: previous and next are both allocated
+        return bp;
+    } else if (prev_alloc && !next_alloc) {
+        // case 2: previous is allocated, next is not
+        size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
+        PUT(HDRP(bp), PACK(size, 0));
+        PUT(FTRP(bp), PACK(size,0));
+    } else if (!prev_alloc && next_alloc) {
+        // case 3: next is allocated, previous is not
+        size += GET_SIZE(HDRP(PREV_BLKP(bp)));
+        PUT(FTRP(bp), PACK(size, 0));
+        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
+        bp = PREV_BLKP(bp);
+    } else {
+        // case 4: both prev and next are free
+        size += GET_SIZE(HDRP(PREV_BLKP(bp))) + GET_SIZE(FTRP(NEXT_BLKP(bp)));
+        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
+        PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
+        bp = PREV_BLKP(bp);
     }
 
-    else if (prev_alloc && !next_alloc) {      /* Case 2 */
-    size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
-    PUT(HDRP(bp), PACK(size, 0));
-    PUT(FTRP(bp), PACK(size,0));
-    }
-
-    else if (!prev_alloc && next_alloc) {      /* Case 3 */
-    size += GET_SIZE(HDRP(PREV_BLKP(bp)));
-    PUT(FTRP(bp), PACK(size, 0));
-    PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
-    bp = PREV_BLKP(bp);
-    }
-
-    else {                                     /* Case 4 */
-    size += GET_SIZE(HDRP(PREV_BLKP(bp))) +
-        GET_SIZE(FTRP(NEXT_BLKP(bp)));
-    PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
-    PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
-    bp = PREV_BLKP(bp);
-    }
-/* $end mmfree */
 #ifdef NEXT_FIT
-    /* Make sure the rover isn't pointing into the free block */
-    /* that we just coalesced */
+    // Make sure the rover isn't pointing into the free block
+    // that we just coalesced. If so, point it to the start.
     if ((rover > (char *)bp) && (rover < NEXT_BLKP(bp)))
-    rover = bp;
+        rover = bp;
 #endif
-/* $begin mmfree */
+
     return bp;
 }
 
 /*
  * place - Place block of asize bytes at start of free block bp
- *         and split if remainder would be at least minimum block size
+ * and split if remainder would be at least minimum block size
  */
-/* $begin mmplace */
-/* $begin mmplace-proto */
-static void place(void *bp, size_t asize)
-     /* $end mmplace-proto */
-{
+static void place(void *bp, size_t asize) {
     size_t csize = GET_SIZE(HDRP(bp));
 
     if ((csize - asize) >= (2*DSIZE)) {
-    PUT(HDRP(bp), PACK(asize, 1));
-    PUT(FTRP(bp), PACK(asize, 1));
-    bp = NEXT_BLKP(bp);
-    PUT(HDRP(bp), PACK(csize-asize, 0));
-    PUT(FTRP(bp), PACK(csize-asize, 0));
-    }
-    else {
-    PUT(HDRP(bp), PACK(csize, 1));
-    PUT(FTRP(bp), PACK(csize, 1));
+        // split case
+        PUT(HDRP(bp), PACK(asize, 1));
+        PUT(FTRP(bp), PACK(asize, 1));
+        bp = NEXT_BLKP(bp);
+        PUT(HDRP(bp), PACK(csize-asize, 0));
+        PUT(FTRP(bp), PACK(csize-asize, 0));
+    } else {
+        // don't split case
+        PUT(HDRP(bp), PACK(csize, 1));
+        PUT(FTRP(bp), PACK(csize, 1));
     }
 }
-/* $end mmplace */
