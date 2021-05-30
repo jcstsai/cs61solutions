@@ -87,12 +87,14 @@ static void *coalesce(void *bp);
  */
 int mm_init(void)
 {
-    /* Create the initial empty heap */
+    // Create the initial empty heap (4 words)
     if ((heap_listp = mem_sbrk(4*WSIZE)) == (void *)-1) return -1;
+    
+    // Add alignment padding (word 0), prologue (word 1), epilogue (word 3)
     PUT(heap_listp, 0); /* Alignment padding */
-    PUT(heap_listp + (1*WSIZE), PACK(DSIZE, 1)); /* Prologue header */
-    PUT(heap_listp + (2*WSIZE), PACK(DSIZE, 1)); /* Prologue footer */
-    PUT(heap_listp + (3*WSIZE), PACK(0, 1)); /* Epilogue header */
+    PUT(heap_listp + (1*WSIZE), PACK(DSIZE, 1));
+    PUT(heap_listp + (2*WSIZE), PACK(DSIZE, 1));
+    PUT(heap_listp + (3*WSIZE), PACK(0, 1));
     heap_listp += (2*WSIZE);
 
     /* Extend the empty heap with a free block of CHUNKSIZE bytes */
@@ -102,32 +104,32 @@ int mm_init(void)
 
 /* 
  * mm_malloc - Allocate a block by incrementing the brk pointer.
- *     Always allocate a block whose size is a multiple of the alignment.
+ * Always allocate a block whose size is a multiple of the alignment.
  */
 void *mm_malloc(size_t size)
 {
-    size_t asize;      /* Adjusted block size */
-    size_t extendsize; /* Amount to extend heap if no fit */
-    char *bp;
-
-    if (heap_listp == 0){
+    // Ignore spurious requests
+    if (size == 0) return NULL;
+    
+    // If still at the start, initialize the heap
+    if (heap_listp == 0) {
         mm_init();
     }
-    /* Ignore spurious requests */
-    if (size == 0) return NULL;
-
-    /* Adjust block size to include overhead and alignment reqs. */
+    
+    // Adjust block size to include overhead and alignment reqs.
+    size_t asize;
     if (size <= DSIZE) asize = 2*DSIZE;
     else asize = DSIZE * ((size + (DSIZE) + (DSIZE-1)) / DSIZE);
 
-    /* Search the free list for a fit */
+    // Search the free list for a fit
+    char *bp;
     if ((bp = find_fit(asize)) != NULL) {
         place(bp, asize);
         return bp;
     }
 
-    /* No fit found. Get more memory and place the block */
-    extendsize = MAX(asize,CHUNKSIZE);
+    // No fit found. Get more memory and place the block
+    size_t extendsize = MAX(asize,CHUNKSIZE);
     if ((bp = extend_heap(extendsize/WSIZE)) == NULL) return NULL;
     place(bp, asize);
     return bp;
@@ -198,7 +200,7 @@ static void *extend_heap(size_t words)
     size_t size;
 
     /* Allocate an even number of words to maintain alignment */
-    size = (words % 2) ? (words+1) * WSIZE : words * WSIZE; //line:vm:mm:beginextend
+    size = (words % 2) ? (words+1) * WSIZE : words * WSIZE;
     if ((long)(bp = mem_sbrk(size)) == -1) return NULL;
 
     /* Initialize free block header/footer and the epilogue header */
