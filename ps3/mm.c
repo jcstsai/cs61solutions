@@ -205,28 +205,8 @@ void *mm_realloc(void *ptr, size_t size)
  * find_fit - Find a fit for a block with asize bytes
  */
 static void *find_fit(size_t asize) {
-    void *bp;
-    unsigned int size;
-    unsigned int minsize = UINT_MAX;
-    void *minbp = NULL;
-
-    for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) {
-        size = GET_SIZE(HDRP(bp));
-        if (!GET_ALLOC(HDRP(bp)) && (asize <= size) && (size <= minsize)) {
-            minbp = bp;
-            minsize = size;
-            
-            if (size == minsize) {
-                break;
-            }
-        }
-    }
-    
-    
-    return minbp;
-    
 #ifdef NEXT_FIT
-    /*// Next fit search
+    // Next fit search
     char *oldrover = rover;
 
     // Search from the rover to the end of list
@@ -240,8 +220,26 @@ static void *find_fit(size_t asize) {
         return rover;
 
     // no fit
-    return NULL;*/
+    return NULL;
 #else
+    void *bp;
+    unsigned int size;
+    unsigned int minsize = UINT_MAX;
+    void *minbp = NULL;
+
+    for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) {
+        size = GET_SIZE(HDRP(bp));
+        if (!GET_ALLOC(HDRP(bp)) && (asize <= size) && (size <= minsize)) {
+            minbp = bp;
+            minsize = size;
+            
+            if (asize == minsize) {
+                break;
+            }
+        }
+    }
+    
+    return minbp;
     /*void *bp;
 
     for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) {
