@@ -212,11 +212,14 @@ static void *find_fit(size_t asize) {
 
     for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) {
         size = GET_SIZE(HDRP(bp));
+        printf(size + " ");
         if (!GET_ALLOC(HDRP(bp)) && (asize <= size) && (size < minsize)) {
             minbp = bp;
             minsize = size;
         }
     }
+    
+    printf("\n" + minsize + "\n")
     
     return minbp;
     
