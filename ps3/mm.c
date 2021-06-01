@@ -239,7 +239,7 @@ static void *find_fit(size_t asize) {
     unsigned int minsize = UINT_MAX;
     void *minbp = NULL;
 
-    for (bp = freelistp; bp != NULL; bp = NXTP(bp)) {
+    for (bp = freelistp; bp != NULL; bp = *NXTP(bp)) {
         size = GET_SIZE(HDRP(bp));
         if (!GET_ALLOC(HDRP(bp)) && (asize <= size) && (size <= minsize)) {
             minbp = bp;
@@ -370,11 +370,11 @@ static void add_to_list(void *bp) {
  */
 static void remove_from_list(void *bp) {
     // remove from prev
-    if (PRVP(bp) != NULL) PUT_ADDR(NXTP(PRVP(bp)), NXTP(bp));
+    if (*PRVP(bp) != NULL) PUT_ADDR(NXTP(*PRVP(bp)), *NXTP(bp));
     
     // remove from next
-    if (NXTP(bp) != NULL) PUT_ADDR(PRVP(NXTP(bp)), PRVP(bp));
+    if (*NXTP(bp) != NULL) PUT_ADDR(PRVP(*NXTP(bp)), *PRVP(bp));
     
     // set start of list if needed
-    if (bp == freelistp) freelistp = NXTP(bp);
+    if (bp == freelistp) freelistp = *NXTP(bp);
 }
