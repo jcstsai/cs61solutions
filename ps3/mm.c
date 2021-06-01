@@ -229,12 +229,17 @@ static void *find_fit(size_t asize) {
     // no fit
     return NULL;
 #else
+    // if no free blocks in the list, return null
+    if (freelistp == NULL) {
+        return NULL;
+    }
+    
     void *bp;
     unsigned int size;
     unsigned int minsize = UINT_MAX;
     void *minbp = NULL;
 
-    for (bp = freelistp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) {
+    for (bp = freelistp; bp != NULL; bp = NXTP(bp)) {
         size = GET_SIZE(HDRP(bp));
         if (!GET_ALLOC(HDRP(bp)) && (asize <= size) && (size <= minsize)) {
             minbp = bp;
