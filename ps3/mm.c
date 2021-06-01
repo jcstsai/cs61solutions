@@ -59,8 +59,9 @@ team_t team = {
 #define PACK(size, alloc)  ((size) | (alloc))
 
 /* Read and write a word at address p */
-#define GET(p)       (*(unsigned int *)(p))
-#define PUT(p, val)  (*(unsigned int *)(p) = (val))
+#define GET(p)           (*(unsigned int *)(p))
+#define PUT(p, val)      (*(unsigned int *)(p) = (val))
+#define PUT_ADDR(p, val) (*(void **)(p) = (val))
 
 /* Read the size and allocated fields from address p */
 #define GET_SIZE(p)  (GET(p) & ~0x7)
@@ -233,7 +234,7 @@ static void *find_fit(size_t asize) {
     unsigned int minsize = UINT_MAX;
     void *minbp = NULL;
 
-    for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) {
+    for (bp = freelistp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) {
         size = GET_SIZE(HDRP(bp));
         if (!GET_ALLOC(HDRP(bp)) && (asize <= size) && (size <= minsize)) {
             minbp = bp;
@@ -246,16 +247,6 @@ static void *find_fit(size_t asize) {
     }
     
     return minbp;
-    /*void *bp;
-
-    for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) {
-        if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))) {
-            return bp;
-        }
-    }
-    
-    // no fit*/
-    //return NULL;
 #endif
 }
 
@@ -360,10 +351,10 @@ static void place(void *bp, size_t asize) {
  */
 static void add_to_list(void *bp) {
     // set new block as prev block of first
-    if (freelistp != NULL) PUT(PRVP(freelistp), bp);
+    if (freelistp != NULL) PUT_ADDR(PRVP(freelistp), bp);
     
     // set next block of bp to old first block
-    PUT(NXTP(bp), freelistp);
+    PUT_ADDR(NXTP(bp), freelistp);
     
     // set start of list to bp
     freelistp = (char *)(bp);
@@ -374,10 +365,10 @@ static void add_to_list(void *bp) {
  */
 static void remove_from_list(void *bp) {
     // remove from prev
-    if (PRVP(bp) != NULL) PUT(NXTP(PRVP(bp)), NXTP(bp));
+    if (PRVP(bp) != NULL) PUT_ADDR(NXTP(PRVP(bp)), NXTP(bp));
     
     // remove from next
-    if (NXTP(bp) != NULL) PUT(PRVP(NXTP(bp)), PRVP(bp));
+    if (NXTP(bp) != NULL) PUT_ADDR(PRVP(NXTP(bp)), PRVP(bp));
     
     // set start of list if needed
     if (bp == freelistp) freelistp = NXTP(bp);
