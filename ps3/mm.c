@@ -70,7 +70,7 @@ team_t team = {
 /* Given block ptr bp, compute address of its header and footer */
 #define HDRP(bp)       ((char *)(bp) - WSIZE)
 #define PRVP(bp)       ((void **)(bp))
-#define NXTP(bp)       ((void **)(bp) + WSIZE)
+#define NXTP(bp)       ((void **)(bp) + 1)
 #define FTRP(bp)       ((char *)(bp) + GET_SIZE(HDRP(bp)) - DSIZE)
 
 /* Given block ptr bp, compute address of next and previous blocks */
@@ -79,7 +79,7 @@ team_t team = {
 
 /* Global variables */
 static char *heap_listp = 0;  /* Pointer to first block */
-static char *freelistp = NULL; /* Pointer to first free block */
+static void *freelistp = NULL; /* Pointer to first free block */
 #ifdef NEXT_FIT
 static char *rover;           /* Next fit rover */
 #endif
@@ -297,7 +297,7 @@ static void *coalesce(void *bp) {
         PUT(FTRP(bp), PACK(size,0));
     } else if (!prev_alloc && next_alloc) {
         // case 3: next is allocated, previous is not
-        remove_from_list(PREV_BLKP(bp));
+        remove_from_list(bp);
         size += GET_SIZE(HDRP(PREV_BLKP(bp)));
         PUT(FTRP(bp), PACK(size, 0));
         PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
@@ -305,7 +305,7 @@ static void *coalesce(void *bp) {
     } else {
         // case 4: both prev and next are free
         remove_from_list(NEXT_BLKP(bp));
-        remove_from_list(PREV_BLKP(bp));
+        remove_from_list(bp);
         size += GET_SIZE(HDRP(PREV_BLKP(bp))) + GET_SIZE(FTRP(NEXT_BLKP(bp)));
         PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
         PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
@@ -357,12 +357,13 @@ static void place(void *bp, size_t asize) {
 static void add_to_list(void *bp) {
     // set new block as prev block of first
     if (freelistp != NULL) PUT_ADDR(PRVP(freelistp), bp);
-    
+
     // set next block of bp to old first block
     PUT_ADDR(NXTP(bp), freelistp);
     
     // set start of list to bp
-    freelistp = (char *)(bp);
+    PUT_ADDR(PRVP(bp), NULL);
+    freelistp = (void *)(bp);
 }
 
 /*
