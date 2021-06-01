@@ -69,8 +69,8 @@ team_t team = {
 
 /* Given block ptr bp, compute address of its header and footer */
 #define HDRP(bp)       ((char *)(bp) - WSIZE)
-#define PRVP(bp)       ((char *)(bp))
-#define NXTP(bp)       ((char *)(bp) + WSIZE)
+#define PRVP(bp)       ((void **)(bp))
+#define NXTP(bp)       ((void **)(bp) + WSIZE)
 #define FTRP(bp)       ((char *)(bp) + GET_SIZE(HDRP(bp)) - DSIZE)
 
 /* Given block ptr bp, compute address of next and previous blocks */
