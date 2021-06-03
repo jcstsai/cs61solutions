@@ -59,8 +59,9 @@ team_t team = {
 #define PACK(size, alloc)  ((size) | (alloc))
 
 /* Read and write a word at address p */
-#define GET(p)       (*(unsigned int *)(p))
-#define PUT(p, val)  (*(unsigned int *)(p) = (val))
+#define GET(p)           (*(unsigned int *)(p))
+#define PUT(p, val)      (*(unsigned int *)(p) = (val))
+#define PUT_ADDR(p, val) (*(void **)(p) = (val))
 
 /* Read the size and allocated fields from address p */
 #define GET_SIZE(p)  (GET(p) & ~0x7)
@@ -68,6 +69,8 @@ team_t team = {
 
 /* Given block ptr bp, compute address of its header and footer */
 #define HDRP(bp)       ((char *)(bp) - WSIZE)
+#define PRVP(bp)       ((void **)(bp))
+#define NXTP(bp)       ((void **)(bp) + 1)
 #define FTRP(bp)       ((char *)(bp) + GET_SIZE(HDRP(bp)) - DSIZE)
 
 /* Given block ptr bp, compute address of next and previous blocks */
@@ -76,6 +79,7 @@ team_t team = {
 
 /* Global variables */
 static char *heap_listp = 0;  /* Pointer to first block */
+static void *freelistp = NULL; /* Pointer to first free block */
 #ifdef NEXT_FIT
 static char *rover;           /* Next fit rover */
 #endif
@@ -85,6 +89,8 @@ static void *extend_heap(size_t words);
 static void place(void *bp, size_t asize);
 static void *find_fit(size_t asize);
 static void *coalesce(void *bp);
+static void add_to_list(void *bp);
+static void remove_from_list(void *bp);
 
 /* 
  * mm_init - initialize the malloc package.
@@ -93,6 +99,9 @@ int mm_init(void)
 {
     // Create the initial empty heap (4 words)
     if ((heap_listp = mem_sbrk(4*WSIZE)) == (void *)-1) return -1;
+    
+    // Reset freelistp
+    freelistp = NULL;
     
     // Add alignment padding (word 0), prologue (word 1), epilogue (word 3)
     PUT(heap_listp, 0); /* Alignment padding */
@@ -160,6 +169,7 @@ void mm_free(void *ptr)
     size_t size = GET_SIZE(HDRP(ptr));
     PUT(HDRP(ptr), PACK(size, 0));
     PUT(FTRP(ptr), PACK(size, 0));
+    add_to_list(ptr);
     coalesce(ptr);
 }
 
@@ -222,12 +232,17 @@ static void *find_fit(size_t asize) {
     // no fit
     return NULL;
 #else
+    // if no free blocks in the list, return null
+    if (freelistp == NULL) {
+        return NULL;
+    }
+    
     void *bp;
     unsigned int size;
     unsigned int minsize = UINT_MAX;
     void *minbp = NULL;
 
-    for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) {
+    for (bp = freelistp; bp != NULL; bp = *NXTP(bp)) {
         size = GET_SIZE(HDRP(bp));
         if (!GET_ALLOC(HDRP(bp)) && (asize <= size) && (size <= minsize)) {
             minbp = bp;
@@ -240,16 +255,6 @@ static void *find_fit(size_t asize) {
     }
     
     return minbp;
-    /*void *bp;
-
-    for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) {
-        if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))) {
-            return bp;
-        }
-    }
-    
-    // no fit*/
-    //return NULL;
 #endif
 }
 
@@ -270,6 +275,7 @@ static void *extend_heap(size_t words)
     PUT(HDRP(bp), PACK(size, 0));         /* Free block header */
     PUT(FTRP(bp), PACK(size, 0));         /* Free block footer */
     PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1)); /* New epilogue header */
+    add_to_list(bp);
 
     /* Coalesce if the previous block was free */
     return coalesce(bp);
@@ -288,17 +294,21 @@ static void *coalesce(void *bp) {
         return bp;
     } else if (prev_alloc && !next_alloc) {
         // case 2: previous is allocated, next is not
+        remove_from_list(NEXT_BLKP(bp));
         size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
         PUT(HDRP(bp), PACK(size, 0));
         PUT(FTRP(bp), PACK(size,0));
     } else if (!prev_alloc && next_alloc) {
         // case 3: next is allocated, previous is not
+        remove_from_list(bp);
         size += GET_SIZE(HDRP(PREV_BLKP(bp)));
         PUT(FTRP(bp), PACK(size, 0));
         PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
         bp = PREV_BLKP(bp);
     } else {
         // case 4: both prev and next are free
+        remove_from_list(NEXT_BLKP(bp));
+        remove_from_list(bp);
         size += GET_SIZE(HDRP(PREV_BLKP(bp))) + GET_SIZE(FTRP(NEXT_BLKP(bp)));
         PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
         PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
@@ -324,14 +334,51 @@ static void place(void *bp, size_t asize) {
 
     if ((csize - asize) >= (2*DSIZE)) {
         // split case
+        // allocated block
         PUT(HDRP(bp), PACK(asize, 1));
         PUT(FTRP(bp), PACK(asize, 1));
+        remove_from_list(bp);
+        
+        // new free block
         bp = NEXT_BLKP(bp);
         PUT(HDRP(bp), PACK(csize-asize, 0));
         PUT(FTRP(bp), PACK(csize-asize, 0));
+        add_to_list(bp);
     } else {
         // don't split case
         PUT(HDRP(bp), PACK(csize, 1));
         PUT(FTRP(bp), PACK(csize, 1));
+        
+        // remove block from free list
+        remove_from_list(bp);
     }
+}
+
+/*
+ * add_to_list - add the given block to the free list
+ */
+static void add_to_list(void *bp) {
+    // set new block as prev block of first
+    if (freelistp != NULL) PUT_ADDR(PRVP(freelistp), bp);
+
+    // set next block of bp to old first block
+    PUT_ADDR(NXTP(bp), freelistp);
+    
+    // set start of list to bp
+    PUT_ADDR(PRVP(bp), NULL);
+    freelistp = (void *)(bp);
+}
+
+/*
+ * remove_from_list - remove the given block from the free list
+ */
+static void remove_from_list(void *bp) {
+    // remove from prev
+    if (*PRVP(bp) != NULL) PUT_ADDR(NXTP(*PRVP(bp)), *NXTP(bp));
+    
+    // remove from next
+    if (*NXTP(bp) != NULL) PUT_ADDR(PRVP(*NXTP(bp)), *PRVP(bp));
+    
+    // set start of list if needed
+    if (bp == freelistp) freelistp = *NXTP(bp);
 }
