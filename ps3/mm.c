@@ -100,6 +100,9 @@ int mm_init(void)
     // Create the initial empty heap (4 words)
     if ((heap_listp = mem_sbrk(4*WSIZE)) == (void *)-1) return -1;
     
+    // Reset freelistp
+    freelistp = NULL;
+    
     // Add alignment padding (word 0), prologue (word 1), epilogue (word 3)
     PUT(heap_listp, 0); /* Alignment padding */
     PUT(heap_listp + (1*WSIZE), PACK(DSIZE, 1));
