@@ -15,7 +15,7 @@
 #include <limits.h>
 #include <unistd.h>
 #include <string.h>
-
+#include <math.h>
 #include "mm.h"
 #include "memlib.h"
 
@@ -77,20 +77,28 @@ team_t team = {
 #define NEXT_BLKP(bp) ((char *)(bp) + GET_SIZE(((char *)(bp) - WSIZE)))
 #define PREV_BLKP(bp) ((char *)(bp) - GET_SIZE(((char *)(bp) - DSIZE)))
 
+/* number of free lists */
+#define NUM_FREE_LISTS 300
+
+
+int numallocs = 0;
+
 /* Global variables */
 static char *heap_listp = 0;  /* Pointer to first block */
-static void *freelistp = NULL; /* Pointer to first free block */
+static void *freelistp[NUM_FREE_LISTS]; /* Pointer to first free blocks */
 #ifdef NEXT_FIT
 static char *rover;           /* Next fit rover */
 #endif
 
 /* Function prototypes for internal helper routines */
+static int mm_check();
 static void *extend_heap(size_t words);
 static void place(void *bp, size_t asize);
 static void *find_fit(size_t asize);
 static void *coalesce(void *bp);
 static void add_to_list(void *bp);
 static void remove_from_list(void *bp);
+static int get_index(size_t size);
 
 /* 
  * mm_init - initialize the malloc package.
@@ -101,7 +109,7 @@ int mm_init(void)
     if ((heap_listp = mem_sbrk(4*WSIZE)) == (void *)-1) return -1;
     
     // Reset freelistp
-    freelistp = NULL;
+    for (int i = 0; i < NUM_FREE_LISTS; i++) freelistp[i] = NULL;
     
     // Add alignment padding (word 0), prologue (word 1), epilogue (word 3)
     PUT(heap_listp, 0); /* Alignment padding */
@@ -124,7 +132,11 @@ int mm_init(void)
  * Always allocate a block whose size is a multiple of the alignment.
  */
 void *mm_malloc(size_t size)
-{
+{    
+    //printf("Allocating %d\n", size);
+
+    numallocs += 1;
+
     // Ignore spurious requests
     if (size == 0) return NULL;
     
@@ -142,6 +154,11 @@ void *mm_malloc(size_t size)
     char *bp;
     if ((bp = find_fit(asize)) != NULL) {
         place(bp, asize);
+        
+        // check heap consistency
+        //if (mm_check()) exit(1);
+        //printf("Allocated %p\n", bp);
+
         return bp;
     }
 
@@ -149,6 +166,11 @@ void *mm_malloc(size_t size)
     size_t extendsize = MAX(asize,CHUNKSIZE);
     if ((bp = extend_heap(extendsize/WSIZE)) == NULL) return NULL;
     place(bp, asize);
+    
+    // check heap consistency
+    //if (mm_check()) exit(1);
+    //printf("Allocated %p\n", bp);
+    
     return bp;
 }
 
@@ -156,7 +178,7 @@ void *mm_malloc(size_t size)
  * mm_free - Free a block
  */
 void mm_free(void *ptr)
-{
+{   
     // don't free a null pointer
     if(ptr == 0) return;
     
@@ -171,11 +193,15 @@ void mm_free(void *ptr)
     PUT(FTRP(ptr), PACK(size, 0));
     add_to_list(ptr);
     coalesce(ptr);
+    
+    // check heap consistency
+    //printf("Freed %p\n", ptr);
+    //if (mm_check()) exit(1);
 }
 
 /*
  * mm_realloc - Implemented simply in terms of mm_malloc and mm_free
- * TODO clean up
+
  */
 void *mm_realloc(void *ptr, size_t size)
 {
@@ -208,7 +234,105 @@ void *mm_realloc(void *ptr, size_t size)
     /* Free the old block. */
     mm_free(ptr);
 
+    // check heap consistency
+    //if (mm_check()) exit(1);
+
     return newptr;
+}
+
+static int mm_check() {
+    void *bp;
+
+    for (int i = 0; i < NUM_FREE_LISTS; i++) {
+        for (bp = freelistp[i]; bp != NULL; bp = *NXTP(bp)) {
+            // is every free block marked as free?
+            if (GET_ALLOC(HDRP(bp))) {
+                printf("There is an allocated block in the free list\n");
+                return 1;
+            }
+            if (GET_ALLOC(FTRP(bp))) {
+                printf("There is an allocated block in the free list\n");
+                return 1;
+            }
+            
+            // are there any contiguous free blocks?
+            if (!GET_ALLOC(HDRP(PREV_BLKP(bp)))) {
+                printf("There are contiguous free blocks\n");
+                return 1;
+            }
+            if (!GET_ALLOC(HDRP(NEXT_BLKP(bp)))) {
+                printf("There are contiguous free blocks\n");
+                return 1;
+            }
+            
+            // does every pointer point inside the heap
+            if (*NXTP(bp) != NULL && 
+                    (*NXTP(bp) < (void *)heap_listp || *NXTP(bp) > mem_heap_hi()))  {
+                printf("There is a next pointer outside the heap\n");
+                return 1;
+            }
+            if (*PRVP(bp) != NULL && 
+                    (*PRVP(bp) < (void *)heap_listp || *PRVP(bp) > mem_heap_hi())) {
+                printf("There is a prev pointer outside the heap\n");
+                return 1;
+            }
+            
+            // is every pointer pointing to a free block
+            if (*NXTP(bp) != NULL && GET_ALLOC(HDRP(*NXTP(bp)))) {
+                printf("A free block is pointing to an allocated block\n");
+                return 1;
+            }
+            if (*PRVP(bp) != NULL && GET_ALLOC(HDRP(*PRVP(bp)))) {
+                printf("A free block is pointing to an allocated block\n");
+                return 1;
+            }
+            
+         }
+    }
+    
+    for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) {
+        // is every free block in the free list
+        int is_in_free_list = 0;
+        if (!GET_ALLOC(HDRP(bp))) {
+            for (int i = 0; i < NUM_FREE_LISTS; i++)
+                for (void *fbp = freelistp[i]; fbp != NULL; fbp = *NXTP(fbp))
+                    if (bp == fbp) is_in_free_list = 1;
+
+            if (!is_in_free_list) {
+                printf("There is a free block not in the free list\n");
+                return 1;
+            }
+        }
+    }
+    
+    // print the state of the free lists
+    /*
+    int num_free_blocks[NUM_FREE_LISTS];
+    
+    for (int i = 0; i < NUM_FREE_LISTS; i++) {
+        num_free_blocks[i] = 0;
+    }
+    
+    for (int i = 0; i < NUM_FREE_LISTS; i++) {
+        for (void *testbp = freelistp[i]; testbp != NULL; testbp = *NXTP(testbp)) {
+            num_free_blocks[i]++;
+	    }
+    }
+    
+    for (int i = 0; i < NUM_FREE_LISTS; i++) {
+        if (num_free_blocks[i])
+            printf("%d %d;", i, num_free_blocks[i]);
+    }
+    printf("\n");
+    */
+    
+    // print the state of the heap
+    for (void *bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) {
+        printf("%p %d %d;", bp, GET_SIZE(HDRP(bp))/4, GET_ALLOC(HDRP(bp)));
+    }
+    printf("\n");
+    
+    return 0;
 }
 
 /*
@@ -232,29 +356,26 @@ static void *find_fit(size_t asize) {
     // no fit
     return NULL;
 #else
-    // if no free blocks in the list, return null
-    if (freelistp == NULL) {
-        return NULL;
-    }
-    
-    void *bp;
+    int index = get_index(asize) - 2;
+    if (index < 0) index = 0;
+   
+    void *bp = NULL;
+    void *testbp;
     unsigned int size;
-    unsigned int minsize = UINT_MAX;
-    void *minbp = NULL;
-
-    for (bp = freelistp; bp != NULL; bp = *NXTP(bp)) {
-        size = GET_SIZE(HDRP(bp));
-        if (!GET_ALLOC(HDRP(bp)) && (asize <= size) && (size <= minsize)) {
-            minbp = bp;
-            minsize = size;
+    
+    for (int i = index; i < NUM_FREE_LISTS; i++) {
+        for (testbp = freelistp[i]; testbp != NULL; testbp = *NXTP(testbp)) {
+            size = GET_SIZE(HDRP(testbp));
             
-            if (asize == minsize) {
-                break;
-            }
-        }
+            if (asize <= size) {
+		        bp = testbp;
+		        break;
+		    }
+	    }
+
     }
     
-    return minbp;
+    return bp;
 #endif
 }
 
@@ -278,7 +399,12 @@ static void *extend_heap(size_t words)
     add_to_list(bp);
 
     /* Coalesce if the previous block was free */
-    return coalesce(bp);
+    void *coalesced_bp = coalesce(bp);
+    
+    //printf("Extending heap %d\n", words);
+    //mm_check();
+    
+    return coalesced_bp;
 }
 
 /*
@@ -294,25 +420,31 @@ static void *coalesce(void *bp) {
         return bp;
     } else if (prev_alloc && !next_alloc) {
         // case 2: previous is allocated, next is not
+        remove_from_list(bp);
         remove_from_list(NEXT_BLKP(bp));
         size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
         PUT(HDRP(bp), PACK(size, 0));
         PUT(FTRP(bp), PACK(size,0));
+        add_to_list(bp);
     } else if (!prev_alloc && next_alloc) {
         // case 3: next is allocated, previous is not
         remove_from_list(bp);
+        remove_from_list(PREV_BLKP(bp));
         size += GET_SIZE(HDRP(PREV_BLKP(bp)));
         PUT(FTRP(bp), PACK(size, 0));
         PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
         bp = PREV_BLKP(bp);
+        add_to_list(bp);
     } else {
         // case 4: both prev and next are free
         remove_from_list(NEXT_BLKP(bp));
         remove_from_list(bp);
+        remove_from_list(PREV_BLKP(bp));
         size += GET_SIZE(HDRP(PREV_BLKP(bp))) + GET_SIZE(FTRP(NEXT_BLKP(bp)));
         PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
         PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
         bp = PREV_BLKP(bp);
+        add_to_list(bp);
     }
 
 #ifdef NEXT_FIT
@@ -335,9 +467,9 @@ static void place(void *bp, size_t asize) {
     if ((csize - asize) >= (2*DSIZE)) {
         // split case
         // allocated block
+        remove_from_list(bp);
         PUT(HDRP(bp), PACK(asize, 1));
         PUT(FTRP(bp), PACK(asize, 1));
-        remove_from_list(bp);
         
         // new free block
         bp = NEXT_BLKP(bp);
@@ -346,11 +478,9 @@ static void place(void *bp, size_t asize) {
         add_to_list(bp);
     } else {
         // don't split case
+        remove_from_list(bp);
         PUT(HDRP(bp), PACK(csize, 1));
         PUT(FTRP(bp), PACK(csize, 1));
-        
-        // remove block from free list
-        remove_from_list(bp);
     }
 }
 
@@ -358,21 +488,27 @@ static void place(void *bp, size_t asize) {
  * add_to_list - add the given block to the free list
  */
 static void add_to_list(void *bp) {
+    size_t size = GET_SIZE(HDRP(bp));
+    int index = get_index(size);
+
     // set new block as prev block of first
-    if (freelistp != NULL) PUT_ADDR(PRVP(freelistp), bp);
+    if (freelistp[index] != NULL) PUT_ADDR(PRVP(freelistp[index]), bp);
 
     // set next block of bp to old first block
-    PUT_ADDR(NXTP(bp), freelistp);
+    PUT_ADDR(NXTP(bp), freelistp[index]);
     
     // set start of list to bp
     PUT_ADDR(PRVP(bp), NULL);
-    freelistp = (void *)(bp);
+    freelistp[index] = (void *)(bp);
 }
 
 /*
  * remove_from_list - remove the given block from the free list
  */
 static void remove_from_list(void *bp) {
+    size_t size = GET_SIZE(HDRP(bp));
+    int index = get_index(size);
+
     // remove from prev
     if (*PRVP(bp) != NULL) PUT_ADDR(NXTP(*PRVP(bp)), *NXTP(bp));
     
@@ -380,5 +516,15 @@ static void remove_from_list(void *bp) {
     if (*NXTP(bp) != NULL) PUT_ADDR(PRVP(*NXTP(bp)), *PRVP(bp));
     
     // set start of list if needed
-    if (bp == freelistp) freelistp = *NXTP(bp);
+    if (bp == freelistp[index]) freelistp[index] = *NXTP(bp);
+}
+
+static int get_index(size_t size) {
+    int index;
+
+    // fixed bins for up to 256
+    if (size < 256) index = size/8 - 2;
+    else index = (int)(log2(1.0*size)) + 25;
+    
+    return index;
 }
