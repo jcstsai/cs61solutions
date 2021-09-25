@@ -1,5 +1,12 @@
 /*
  * mm.c - a custom implementation of malloc.
+ *
+ * traces
+ * 4 - 
+ * 7 - allocate a bunch of 448/64, free the 448's, allocate a bunch more 512's
+ * 8 - allocate a bunch of 112/16, free the 112's, allocate a bunch more 128's
+ * 9 - should keep [128][512 +++++++>>>>.....
+ * 10- should keep [16][4092 +++++++..>>>>>
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -39,7 +46,7 @@ team_t team = {
 /* Basic constants and macros */
 #define WSIZE       4       /* Word and header/footer size (bytes) */
 #define DSIZE       8       /* Double word size (bytes) */
-#define CHUNKSIZE  (1<<12)  /* Extend heap by this amount (bytes) */
+#define CHUNKSIZE  (1<<8)  /* Extend heap by this amount (bytes) */
 #define MAX(x, y) ((x) > (y)? (x) : (y))
 
 /* Pack a size and allocated bit into a word */
