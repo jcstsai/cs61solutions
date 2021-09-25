@@ -72,7 +72,6 @@ static char *heap_listp = 0;  /* Pointer to first block */
 static void *freelistp[NUM_FREE_LISTS]; /* Pointer to first free blocks */
 
 /* Function prototypes for internal helper routines */
-static void mm_free_coalesce(void *ptr, int do_coalesce);
 static int mm_check();
 static void *extend_heap(size_t words);
 static void place(void *bp, size_t asize);
@@ -155,7 +154,7 @@ void *mm_malloc(size_t size)
 /*
  * mm_free - Free a block
  */
-static void mm_free_coalesce(void *ptr, int do_coalesce)
+void mm_free(void *ptr)
 {   
     //printf("Free %p\n", ptr);
     // don't free a null pointer
@@ -171,15 +170,11 @@ static void mm_free_coalesce(void *ptr, int do_coalesce)
     PUT(HDRP(ptr), PACK(size, 0));
     PUT(FTRP(ptr), PACK(size, 0));
     add_to_list(ptr);
-    if (do_coalesce) coalesce(ptr);
+    coalesce(ptr);
     
     // check heap consistency
     //printf("Freed %p\n", ptr);
     //if (mm_check()) exit(1);
-}
-
-void mm_free(void *ptr) {
-    mm_free_coalesce(ptr, 1);
 }
 
 /*
