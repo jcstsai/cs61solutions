@@ -1,12 +1,28 @@
 /*
  * mm.c - a custom implementation of malloc.
+ * * Allocated/Free Block Structure *
+ * Each block has a header with the size and is allocated bit.
+ * Each block has a footer with the size and is allocated bit.
+ * Each free block has a prev pointer and next pointer as the first
+ * two words after the header.
  *
- * traces
- * 4 - 
- * 7 - allocate a bunch of 448/64, free the 448's, allocate a bunch more 512's
- * 8 - allocate a bunch of 112/16, free the 112's, allocate a bunch more 128's
- * 9 - should keep [128][512 +++++++>>>>.....
- * 10- should keep [16][4092 +++++++..>>>>>
+ * *Free List Structure*
+ * Free blocks are maintained in a segregated free list, with exact sizes for
+ * up to 512 and then the next buckets double in size each time. Each bucket keeps
+ * free blocks in a linked list.
+ * 
+ * *Manipulating the free list structure*
+ * When allocating, the allocator looks in the correct bucket for a fit. If
+ * there is none, it linear searches through the bigger ones. If no fit is found
+ * there, it extends the heap. If it finds a match, that block is allocated and
+ * removed from 
+ *
+ * When freeing, the allocator adds the block to the appropriate bucket's linked
+ * list after coalescing with the surrounding blocks.
+ * 
+ * *Realloc*
+ * Realloc uses several heuristics (using the same block if we're reallocating to
+ * less, and combining with the next adjacent block if possible).
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -18,10 +34,7 @@
 #include "mm.h"
 #include "memlib.h"
 
-/*********************************************************
- * NOTE TO STUDENTS: Before you do anything else, please
- * provide your team information in the following struct.
- ********************************************************/
+// metadata
 team_t team = {
     /* Team name */
     "jtsai",
@@ -112,13 +125,12 @@ int mm_init(void)
 }
 
 /* 
- * mm_malloc - Allocate a block by incrementing the brk pointer.
+ * mm_malloc - Allocate a block.
  * Always allocate a block whose size is a multiple of the alignment.
+ * If we find a suitable free block we use it. Otherwise we extend the heap.
  */
 void *mm_malloc(size_t size)
 {    
-    //printf("Allocating %d\n", size);
-
     // Ignore spurious requests
     if (size == 0) return NULL;
     
@@ -131,8 +143,6 @@ void *mm_malloc(size_t size)
     size_t asize;
     if (size <= DSIZE) asize = 2*DSIZE;
     else asize = DSIZE * ((size + (DSIZE) + (DSIZE-1)) / DSIZE);
-    
-    //printf("Adjallocating %d\n", asize);
 
     // Search the free list for a fit
     char *bp;
@@ -141,7 +151,6 @@ void *mm_malloc(size_t size)
         
         // check heap consistency
         //if (mm_check()) exit(1);
-        //printf("Allocated %p\n", bp);
 
         return bp;
     }
@@ -153,17 +162,15 @@ void *mm_malloc(size_t size)
     
     // check heap consistency
     //if (mm_check()) exit(1);
-    //printf("Allocated %p\n", bp);
     
     return bp;
 }
 
 /*
- * mm_free - Free a block
+ * mm_free - Free a block. Coalesce on every free.
  */
 void mm_free(void *ptr)
 {   
-    //printf("Free %p\n", ptr);
     // don't free a null pointer
     if(ptr == 0) return;
     
@@ -180,13 +187,15 @@ void mm_free(void *ptr)
     coalesce(ptr);
     
     // check heap consistency
-    //printf("Freed %p\n", ptr);
     //if (mm_check()) exit(1);
 }
 
 /*
  * mm_realloc - reallocates a block
-
+ * We use the following heuristics:
+ * - using the same block if we're reallocating to less
+ * - combining with the next adjacent block if possible.
+ * If neither of these works, we just use free and malloc.
  */
 void *mm_realloc(void *ptr, size_t size)
 {
@@ -206,11 +215,12 @@ void *mm_realloc(void *ptr, size_t size)
         return mm_malloc(size);
     }
     
-    /* If the new size is less than the old size, use the same block */
     // Adjust block size to include overhead and alignment reqs.
     size_t asize;
     if (size <= DSIZE) asize = 2*DSIZE;
     else asize = DSIZE * ((size + (DSIZE) + (DSIZE-1)) / DSIZE);
+    
+    // If the new size is less than the old size, use the same block
     if ((asize == GET_SIZE(HDRP(ptr)) || asize < GET_SIZE(HDRP(ptr)) - 16) &&
         GET_SIZE(HDRP(NEXT_BLKP(ptr)))) {
         int csize = GET_SIZE(HDRP(ptr));
@@ -229,6 +239,9 @@ void *mm_realloc(void *ptr, size_t size)
             coalesce(bp);
         }
         newptr = ptr;
+        
+    // If the next adjacent block is large enough and free, use it for the
+    // additional space
     } else if (
             ((asize == (GET_SIZE(HDRP(ptr)) + GET_SIZE(HDRP(NEXT_BLKP(ptr))))) || 
                (asize + 16 < (GET_SIZE(HDRP(ptr)) + GET_SIZE(HDRP(NEXT_BLKP(ptr)))))
@@ -254,6 +267,8 @@ void *mm_realloc(void *ptr, size_t size)
             coalesce(bp);
         }
         newptr = ptr;
+        
+    // Otherwise, just use malloc and free
     } else {
         newptr = mm_malloc(size);
         
@@ -277,6 +292,10 @@ void *mm_realloc(void *ptr, size_t size)
     return newptr;
 }
 
+/**
+ * Heap consistency checker. Also contains code for printing the state of
+ * the free list.
+ */
 static int mm_check() {
     void *bp;
 
@@ -373,6 +392,8 @@ static int mm_check() {
 
 /*
  * find_fit - Find a fit for a block with asize bytes
+ * We look through the free list for a suitable fit, first in the bucket
+ * matching the size. 
  */
 static void *find_fit(size_t asize) {
     int index = get_index(asize) - 2;
@@ -383,6 +404,7 @@ static void *find_fit(size_t asize) {
     unsigned int size;
     
     for (int i = index; i < NUM_FREE_LISTS; i++) {
+        // For smaller blocks, if we don't find an exact match, skip.
         if (i < 45) {
             testbp = freelistp[i];
             if (testbp == NULL) continue;
@@ -396,21 +418,18 @@ static void *find_fit(size_t asize) {
 		    
 		    continue;
         }
-        
-        //int count = 0;
     
+        // For larger blocks, linear search through the linked list
         for (testbp = freelistp[i]; testbp != NULL; testbp = *NXTP(testbp)) {
             size = GET_SIZE(HDRP(testbp));
-            
-            //count++;
             
             if (asize <= size) {
 		        bp = testbp;
 		        break;
 		    }
 	    }
-	    //if (count > 0) printf("%d\n", count);
 	    
+	    // If we find a match, break and return.
 	    if (bp) break;
     }
     
@@ -429,12 +448,6 @@ static void *extend_heap(size_t words)
     /* Allocate an even number of words to maintain alignment */
     size = (words % 2) ? (words+1) * WSIZE : words * WSIZE;
     
-    // Adjust size downwards if the previous block was free
-    //size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(mem_heap_hi())));
-    //if (prev_alloc) {
-    //    size -= GET_SIZE(HDRP(PREV_BLKP(mem_heap_hi())));
-    //}
-    
     if ((long)(bp = mem_sbrk(size)) == -1) return NULL;
 
     /* Initialize free block header/footer and the epilogue header */
@@ -446,7 +459,7 @@ static void *extend_heap(size_t words)
     /* Coalesce if the previous block was free */
     void *coalesced_bp = coalesce(bp);
     
-    //printf("Extending heap %d\n", words);
+    // heap consistency check
     //mm_check();
     
     return coalesced_bp;
@@ -558,6 +571,9 @@ static void remove_from_list(void *bp) {
     if (bp == freelistp[index]) freelistp[index] = *NXTP(bp);
 }
 
+/**
+ * Helper that computes the index of a given size.
+ */
 static int get_index(size_t size) {
     int index;
 
