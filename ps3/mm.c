@@ -1,13 +1,5 @@
 /*
- * mm-naive.c - The fastest, least memory-efficient malloc package.
- * 
- * In this naive approach, a block is allocated by simply incrementing
- * the brk pointer.  A block is pure payload. There are no headers or
- * footers.  Blocks are never coalesced or reused. Realloc is
- * implemented directly using mm_malloc and mm_free.
- *
- * NOTE TO STUDENTS: Replace this header comment with your own header
- * comment that gives a high level description of your solution.
+ * mm.c - a custom implementation of malloc.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -35,11 +27,6 @@ team_t team = {
     /* Second member's email address (leave blank if none) */
     ""
 };
-
-/*
- * If NEXT_FIT defined use next fit search, else use first fit search
- */
-#define NEXT_FITx
 
 /* single word (4) or double word (8) alignment */
 #define ALIGNMENT 8
@@ -83,9 +70,6 @@ team_t team = {
 /* Global variables */
 static char *heap_listp = 0;  /* Pointer to first block */
 static void *freelistp[NUM_FREE_LISTS]; /* Pointer to first free blocks */
-#ifdef NEXT_FIT
-static char *rover;           /* Next fit rover */
-#endif
 
 /* Function prototypes for internal helper routines */
 static void mm_free_coalesce(void *ptr, int do_coalesce);
@@ -115,10 +99,6 @@ int mm_init(void)
     PUT(heap_listp + (2*WSIZE), PACK(DSIZE, 1));
     PUT(heap_listp + (3*WSIZE), PACK(0, 1));
     heap_listp += (2*WSIZE);
-    
-#ifdef NEXT_FIT
-    rover = heap_listp;
-#endif
 
     /* Extend the empty heap with a free block of CHUNKSIZE bytes */
     if (extend_heap(CHUNKSIZE/WSIZE) == NULL) return -1;
@@ -393,23 +373,6 @@ static int mm_check() {
  * find_fit - Find a fit for a block with asize bytes
  */
 static void *find_fit(size_t asize) {
-#ifdef NEXT_FIT
-    // Next fit search
-    char *oldrover = rover;
-
-    // Search from the rover to the end of list
-    for (; GET_SIZE(HDRP(rover)) > 0; rover = NEXT_BLKP(rover))
-        if (!GET_ALLOC(HDRP(rover)) && (asize <= GET_SIZE(HDRP(rover))))
-            return rover;
-
-    // search from start of list to old rover
-    for (rover = heap_listp; rover < oldrover; rover = NEXT_BLKP(rover))
-    if (!GET_ALLOC(HDRP(rover)) && (asize <= GET_SIZE(HDRP(rover))))
-        return rover;
-
-    // no fit
-    return NULL;
-#else
     int index = get_index(asize) - 2;
     if (index < 0) index = 0;
    
@@ -450,7 +413,6 @@ static void *find_fit(size_t asize) {
     }
     
     return bp;
-#endif
 }
 
 /*
@@ -527,13 +489,6 @@ static void *coalesce(void *bp) {
         bp = PREV_BLKP(bp);
         add_to_list(bp);
     }
-
-#ifdef NEXT_FIT
-    // Make sure the rover isn't pointing into the free block
-    // that we just coalesced. If so, point it to the start.
-    if ((rover > (char *)bp) && (rover < NEXT_BLKP(bp)))
-        rover = bp;
-#endif
 
     return bp;
 }
