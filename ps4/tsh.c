@@ -1,7 +1,7 @@
 /* 
  * tsh - A tiny shell program with job control
  * 
- * <Put your name and login ID here>
+z
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -183,13 +183,13 @@ void eval(char *cmdline)
         return;
     
     if (!builtin_cmd(argv)) {
-        sigset_t mask;
+       /* sigset_t mask;
         sigemptyset(&mask);
         sigaddset(&mask, SIGCHLD);
-        sigprocmask(SIG_BLOCK, &mask, NULL);
+        sigprocmask(SIG_BLOCK, &mask, NULL);*/
         
         if ((pid = fork()) == 0) {
-            sigprocmask(SIG_UNBLOCK, &mask, NULL);
+            //sigprocmask(SIG_UNBLOCK, &mask, NULL);
             setpgid(0,0);
             // Child runs user job
             if (execve(argv[0], argv, environ) < 0) {
@@ -197,7 +197,7 @@ void eval(char *cmdline)
                 exit(0);
             }
         } else {
-            sigprocmask(SIG_UNBLOCK, &mask, NULL);
+            // sigprocmask(SIG_UNBLOCK, &mask, NULL);
             jid = addjob(jobs, pid, bg ? BG : FG, cmdline);
         }
         
@@ -299,7 +299,7 @@ int builtin_cmd(char **argv)
  */
 void do_bgfg(char **argv) 
 {
-    pid_t pid;
+    /*pid_t pid;
     struct job_t *job;
     if (argv[1][0] == '%') {
         int jid;
@@ -332,7 +332,7 @@ void do_bgfg(char **argv)
     } else {
         job->state = FG;
         waitfg(pid);
-    }
+    }*/
 }
 
 /* 
@@ -374,8 +374,6 @@ void sigchld_handler(int sig)
     if (errno != ECHILD) {
         unix_error("waitpid error");
     }
-
-    
 }
 
 /* 
@@ -385,7 +383,7 @@ void sigchld_handler(int sig)
  */
 void sigint_handler(int sig) 
 {
-    for (int i = 0; i < maxjid(jobs); i++) {
+    /*for (int i = 0; i < maxjid(jobs); i++) {
         if (jobs[i].state == FG) {
             int jid = jobs[i].jid;
             int pid = jobs[i].pid;
@@ -394,7 +392,7 @@ void sigint_handler(int sig)
             printf("Job [%d] (%d) terminated by signal %d\n", jid, pid, sig);
         }
     }
-    return;
+    return;*/
 }
 
 /*
@@ -404,13 +402,13 @@ void sigint_handler(int sig)
  */
 void sigtstp_handler(int sig) 
 {
-    for (int i = 0; i < maxjid(jobs); i++) {
+    /*for (int i = 0; i < maxjid(jobs); i++) {
         if (jobs[i].state == FG) {
             kill(-1*jobs[i].pid, sig);
             jobs[i].state = ST;
         }
     }
-    return;
+    return;*/
 }
 
 /*********************
@@ -457,18 +455,18 @@ int addjob(struct job_t *jobs, pid_t pid, int state, char *cmdline)
 	return 0;
 
     for (i = 0; i < MAXJOBS; i++) {
-	if (jobs[i].pid == 0) {
-	    jobs[i].pid = pid;
-	    jobs[i].state = state;
-	    jobs[i].jid = nextjid++;
-	    if (nextjid > MAXJOBS)
-		nextjid = 1;
-	    strcpy(jobs[i].cmdline, cmdline);
-  	    if(verbose){
-	        printf("Added job [%d] %d %s\n", jobs[i].jid, jobs[i].pid, jobs[i].cmdline);
+	    if (jobs[i].pid == 0) {
+	        jobs[i].pid = pid;
+	        jobs[i].state = state;
+	        jobs[i].jid = nextjid++;
+	        if (nextjid > MAXJOBS)
+		    nextjid = 1;
+	        strcpy(jobs[i].cmdline, cmdline);
+      	    if(verbose){
+	            printf("Added job [%d] %d %s\n", jobs[i].jid, jobs[i].pid, jobs[i].cmdline);
             }
             return 1;
-	}
+	    }
     }
     printf("Tried to create too many jobs\n");
     return 0;
