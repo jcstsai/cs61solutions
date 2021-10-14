@@ -183,13 +183,13 @@ void eval(char *cmdline)
         return;
     
     if (!builtin_cmd(argv)) {
-       /* sigset_t mask;
+        sigset_t mask;
         sigemptyset(&mask);
         sigaddset(&mask, SIGCHLD);
-        sigprocmask(SIG_BLOCK, &mask, NULL);*/
+        sigprocmask(SIG_BLOCK, &mask, NULL);
         
         if ((pid = fork()) == 0) {
-            //sigprocmask(SIG_UNBLOCK, &mask, NULL);
+            sigprocmask(SIG_UNBLOCK, &mask, NULL);
             setpgid(0,0);
             // Child runs user job
             if (execve(argv[0], argv, environ) < 0) {
@@ -197,7 +197,7 @@ void eval(char *cmdline)
                 exit(0);
             }
         } else {
-            // sigprocmask(SIG_UNBLOCK, &mask, NULL);
+            sigprocmask(SIG_UNBLOCK, &mask, NULL);
             jid = addjob(jobs, pid, bg ? BG : FG, cmdline);
         }
         
@@ -299,7 +299,7 @@ int builtin_cmd(char **argv)
  */
 void do_bgfg(char **argv) 
 {
-    /*pid_t pid;
+    pid_t pid;
     struct job_t *job;
     if (argv[1][0] == '%') {
         int jid;
@@ -332,7 +332,7 @@ void do_bgfg(char **argv)
     } else {
         job->state = FG;
         waitfg(pid);
-    }*/
+    }
 }
 
 /* 
@@ -361,18 +361,12 @@ void sigchld_handler(int sig)
     pid_t pid;
     int status;
         
-    while ((pid = waitpid(-1, &status, 0)) > 0) {
-        if (WIFSTOPPED(status)) {
-            struct job_t *job = getjobpid(jobs, pid);
-            printf("Job [%d] (%d) stopped by signal %d\n", job->jid, pid, SIGTSTP);
-        } else if (WIFEXITED(status)) {
-            deletejob(jobs, pid);
-        } else {
-            printf("Unknown exit status.");
-        }
-    }
-    if (errno != ECHILD) {
-        unix_error("waitpid error");
+    pid = waitpid(-1, &status, 0);
+    if (WIFSTOPPED(status)) {
+        struct job_t *job = getjobpid(jobs, pid);
+        printf("Job [%d] (%d) stopped by signal %d\n", job->jid, pid, SIGTSTP);
+    } else if (WIFEXITED(status)) {
+        deletejob(jobs, pid);
     }
 }
 
@@ -383,7 +377,7 @@ void sigchld_handler(int sig)
  */
 void sigint_handler(int sig) 
 {
-    /*for (int i = 0; i < maxjid(jobs); i++) {
+    for (int i = 0; i < maxjid(jobs); i++) {
         if (jobs[i].state == FG) {
             int jid = jobs[i].jid;
             int pid = jobs[i].pid;
@@ -392,7 +386,7 @@ void sigint_handler(int sig)
             printf("Job [%d] (%d) terminated by signal %d\n", jid, pid, sig);
         }
     }
-    return;*/
+    return;
 }
 
 /*
@@ -402,13 +396,13 @@ void sigint_handler(int sig)
  */
 void sigtstp_handler(int sig) 
 {
-    /*for (int i = 0; i < maxjid(jobs); i++) {
+    for (int i = 0; i < maxjid(jobs); i++) {
         if (jobs[i].state == FG) {
             kill(-1*jobs[i].pid, sig);
             jobs[i].state = ST;
         }
     }
-    return;*/
+    return;
 }
 
 /*********************
