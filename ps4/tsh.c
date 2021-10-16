@@ -361,10 +361,11 @@ void sigchld_handler(int sig)
     pid_t pid;
     int status;
         
-    pid = waitpid(-1, &status, 0);
+    pid = waitpid(-1, &status, WUNTRACED);
     if (WIFSTOPPED(status)) {
         struct job_t *job = getjobpid(jobs, pid);
         printf("Job [%d] (%d) stopped by signal %d\n", job->jid, pid, SIGTSTP);
+        fflush(stdout);
     } else if (WIFEXITED(status)) {
         deletejob(jobs, pid);
     }
